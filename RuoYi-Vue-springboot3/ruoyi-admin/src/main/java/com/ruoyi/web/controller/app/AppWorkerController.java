@@ -6,7 +6,9 @@ import org.springframework.web.bind.annotation.*;
 import com.ruoyi.common.core.domain.AjaxResult;
 import com.ruoyi.worker.domain.TbWorker;
 import com.ruoyi.worker.domain.TbWorkerCert;
+import com.ruoyi.worker.domain.TbWorkerFace;
 import com.ruoyi.worker.mapper.TbWorkerCertMapper;
+import com.ruoyi.worker.mapper.TbWorkerFaceMapper;
 import com.ruoyi.worker.mapper.TbWorkerMapper;
 import com.ruoyi.worker.mapper.TbWorkerRoleRelMapper;
 
@@ -20,6 +22,7 @@ public class AppWorkerController
     @Autowired private TbWorkerMapper workerMapper;
     @Autowired private TbWorkerCertMapper certMapper;
     @Autowired private TbWorkerRoleRelMapper roleRelMapper;
+    @Autowired private TbWorkerFaceMapper faceMapper;
 
     /** 我的资料 */
     @GetMapping("/profile")
@@ -53,5 +56,24 @@ public class AppWorkerController
         cert.setAuditStatus("0"); // 待审核
         certMapper.insertTbWorkerCert(cert);
         return AjaxResult.success(Collections.singletonMap("id", cert.getId()));
+    }
+
+    /** 上传人脸照片 */
+    @PostMapping("/face")
+    public AjaxResult addFace(@RequestBody TbWorkerFace face) {
+        face.setCollectTime(new Date());
+        faceMapper.insertTbWorkerFace(face);
+        // 回写人员人脸状态
+        TbWorker w = workerMapper.selectTbWorkerById(face.getWorkerId());
+        if (w != null) { w.setFaceStatus("1"); workerMapper.updateTbWorker(w); }
+        return AjaxResult.success(Collections.singletonMap("id", face.getId()));
+    }
+
+    /** 查看是否已录入人脸 */
+    @GetMapping("/face")
+    public AjaxResult getFace(@RequestParam Long workerId) {
+        TbWorkerFace q = new TbWorkerFace(); q.setWorkerId(workerId);
+        List<TbWorkerFace> list = faceMapper.selectTbWorkerFaceList(q);
+        return AjaxResult.success(list.isEmpty() ? null : list.get(0));
     }
 }
