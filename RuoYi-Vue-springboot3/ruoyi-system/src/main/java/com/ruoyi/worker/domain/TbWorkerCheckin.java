@@ -40,6 +40,9 @@ public class TbWorkerCheckin extends BaseEntity
     @Excel(name = "工点ID")
     private Long siteId;
 
+    private java.math.BigDecimal latitude;
+    private java.math.BigDecimal longitude;
+
     @Excel(name = "现场照片URL")
     private String photoUrl;
 
@@ -75,6 +78,10 @@ public class TbWorkerCheckin extends BaseEntity
 
     public void setSiteId(Long siteId) { this.siteId = siteId; }
     public Long getSiteId() { return siteId; }
+    public void setLatitude(java.math.BigDecimal v) { this.latitude = v; }
+    public java.math.BigDecimal getLatitude() { return latitude; }
+    public void setLongitude(java.math.BigDecimal v) { this.longitude = v; }
+    public java.math.BigDecimal getLongitude() { return longitude; }
 
     public void setPhotoUrl(String photoUrl) { this.photoUrl = photoUrl; }
     public String getPhotoUrl() { return photoUrl; }

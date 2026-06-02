@@ -10,6 +10,8 @@
         <result property="checkTime" column="check_time"/>
         <result property="checkMethod" column="check_method"/>
         <result property="siteId" column="site_id"/>
+        <result property="latitude" column="latitude"/>
+        <result property="longitude" column="longitude"/>
         <result property="photoUrl" column="photo_url"/>
         <result property="aiResult" column="ai_result"/>
         <result property="helmetFlag" column="helmet_flag"/>
@@ -22,7 +24,7 @@
     </resultMap>
 
     <sql id="selectVo">
-        select id, worker_id, role_id, check_type, check_time, check_method, site_id, photo_url, ai_result, helmet_flag, vest_flag,
+        select id, worker_id, role_id, check_type, check_time, check_method, site_id, latitude, longitude, photo_url, ai_result, helmet_flag, vest_flag,
                create_by, create_time, update_by, update_time, remark from tb_worker_checkin
     </sql>
 
@@ -56,6 +58,8 @@
             <if test="checkTime != null">check_time,</if>
             <if test="checkMethod != null">check_method,</if>
             <if test="siteId != null">site_id,</if>
+            <if test="latitude != null">latitude,</if>
+            <if test="longitude != null">longitude,</if>
             <if test="photoUrl != null">photo_url,</if>
             <if test="aiResult != null">ai_result,</if>
             <if test="helmetFlag != null">helmet_flag,</if>
@@ -71,6 +75,8 @@
             <if test="checkTime != null">#{checkTime},</if>
             <if test="checkMethod != null">#{checkMethod},</if>
             <if test="siteId != null">#{siteId},</if>
+            <if test="latitude != null">#{latitude},</if>
+            <if test="longitude != null">#{longitude},</if>
             <if test="photoUrl != null">#{photoUrl},</if>
             <if test="aiResult != null">#{aiResult},</if>
             <if test="helmetFlag != null">#{helmetFlag},</if>
@@ -90,6 +96,8 @@
             <if test="checkTime != null">check_time = #{checkTime},</if>
             <if test="checkMethod != null">check_method = #{checkMethod},</if>
             <if test="siteId != null">site_id = #{siteId},</if>
+            <if test="latitude != null">latitude = #{latitude},</if>
+            <if test="longitude != null">longitude = #{longitude},</if>
             <if test="photoUrl != null">photo_url = #{photoUrl},</if>
             <if test="aiResult != null">ai_result = #{aiResult},</if>
             <if test="helmetFlag != null">helmet_flag = #{helmetFlag},</if>
