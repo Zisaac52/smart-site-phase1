@@ -74,7 +74,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;background:#f5f5f5;
     <label>密码</label><input id="idCard6" type="password" placeholder="身份证号后6位" maxlength="6">
     <button class="btn" onclick="doLogin()">登 录</button>
   </div>
-  <div class="tip">首次登录即自动绑定</div>
+  <div class="tip">登录后 7 天内自动保持登录</div>
 </div>
 
 <!-- Checkin -->
@@ -90,6 +90,11 @@ body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;background:#f5f5f5;
   <div class="status-box">
     <span id="signInStatus">签到：--</span>
     <span id="signOutStatus">签退：--</span>
+  </div>
+  <div style="text-align:center;margin:12px 0">
+    <input id="checkinPhoto" type="file" accept="image/*" capture="environment" style="display:none" onchange="previewCheckinPhoto()">
+    <button class="btn" style="width:auto;padding:8px 24px;font-size:14px;background:#ff9500" onclick="document.getElementById('checkinPhoto').click()">📸 拍照</button>
+    <span id="photoLabel" style="margin-left:8px;font-size:13px;color:#999"></span>
   </div>
   <div class="btn-row">
     <button class="btn signin" id="signInBtn" onclick="doSign('signIn')">签 到</button>
@@ -181,18 +186,26 @@ body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;background:#f5f5f5;
 </div>
 
 <script>
-const API='http://localhost:8080';let workerId=localStorage.getItem('workerId');
+const API='http://localhost:8080';let token=localStorage.getItem('appToken');
+function api(path,opt={}){
+  const headers=opt.headers||{};
+  if(token)headers['Authorization']='Bearer '+token;
+  if(opt.body&&typeof opt.body==='object'&&!opt.body.append){headers['Content-Type']='application/json';opt.body=JSON.stringify(opt.body)}
+  return fetch(API+path,{...opt,headers})
+}
 const p=n=>n<10?'0'+n:''+n;
 const auditLabels={0:['待审核','warn'],1:['已通过','ok'],2:['已驳回','err'],3:['已过期','err']};
 const certNames={id_card:'身份证',safe_cert:'安全员证',electric_cert:'电工证',supervisor_cert:'监理证',guardian_cert:'作业监护证',insurance:'保险'};
 
+let clockTimer=null;
 function showTab(name){
+  if(clockTimer){clearInterval(clockTimer);clockTimer=null}
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
   document.getElementById(name+'Page').classList.add('active');
   document.querySelectorAll('.tab-bar .tab').forEach(t=>t.classList.remove('active'));
   const tabEl=document.getElementById('tab'+name.charAt(0).toUpperCase()+name.slice(1));
   if(tabEl)tabEl.classList.add('active');
-  if(name==='checkin'){refreshCheckin();updateClock()}
+  if(name==='checkin'){refreshCheckin();updateClock();clockTimer=setInterval(updateClock,1000)}
   if(name==='records')loadRecords()
   if(name==='me')loadProfile()
 }
@@ -211,17 +224,17 @@ async function doLogin(){
   const id6=document.getElementById('idCard6').value.trim();
   if(!ph||!id6){alert('请填写完整');return}
   try{
-    const r=await fetch(API+'/app/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({phone:ph,idCardLast6:id6})});
+    const r=await api('/app/auth/login',{method:'POST',body:{phone:ph,idCardLast6:id6}});
     const d=await r.json();
     if(d.code===200){
-      localStorage.setItem('workerId',d.data.workerId);localStorage.setItem('workerName',d.data.workerName);
-      workerId=d.data.workerId;document.getElementById('tabBar').style.display='flex';
+      token=d.data.token;localStorage.setItem('appToken',token);localStorage.setItem('workerName',d.data.workerName);
+      document.getElementById('tabBar').style.display='flex';
       showTab('checkin');setInterval(updateClock,1000);
     }else{alert(d.msg||'登录失败')}
   }catch(e){alert('网络错误')}
 }
 
-function doLogout(){localStorage.clear();workerId=null;document.getElementById('tabBar').style.display='none';document.getElementById('loginPage').classList.add('active');document.getElementById('checkinPage').classList.remove('active');document.getElementById('recordsPage').classList.remove('active');document.getElementById('mePage').classList.remove('active')}
+function doLogout(){token=null;localStorage.clear();document.getElementById('tabBar').style.display='none';document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));document.getElementById('loginPage').classList.add('active')}
 
 function updateClock(){
   const n=new Date();
@@ -230,17 +243,17 @@ function updateClock(){
 }
 
 async function refreshCheckin(){
-  if(!workerId)return;
+  if(!token)return;
   document.getElementById('cName').textContent=localStorage.getItem('workerName')||'--';
   try{
-    const r=await fetch(API+'/app/auth/me?workerId='+workerId);const d=await r.json();
+    const r=await api('/app/auth/me');const d=await r.json();
     if(d.code===200){
       const w=d.data;const[a,cls]=auditLabels[w.auditStatus]||[w.auditStatus,''];
       document.getElementById('cAudit').innerHTML='<span class="badge '+cls+'">'+a+'</span>';
     }
   }catch(e){}
   try{
-    const r=await fetch(API+'/app/checkin/today?workerId='+workerId);const d=await r.json();
+    const r=await api('/app/checkin/today');const d=await r.json();
     if(d.code===200){
       document.getElementById('signInStatus').textContent='签到：'+(d.data.hasSignIn?'✅ '+fmtShort(d.data.signInTime):'未签到');
       document.getElementById('signOutStatus').textContent='签退：'+(d.data.hasSignOut?'✅ '+fmtShort(d.data.signOutTime):'未签退');
@@ -252,19 +265,29 @@ async function refreshCheckin(){
 
 function fmtShort(t){if(!t)return'--';const d=new Date(t);return p(d.getHours())+':'+p(d.getMinutes())}
 
+let checkinPhotoUrl='';
+function previewCheckinPhoto(){
+  const f=document.getElementById('checkinPhoto').files[0];
+  document.getElementById('photoLabel').textContent=f?f.name:'';
+}
 async function doSign(action){
-  if(!workerId)return;
+  if(!token)return;
+  const btn=action==='signIn'?document.getElementById('signInBtn'):document.getElementById('signOutBtn');
+  btn.disabled=true;btn.textContent='提交中...';
+  let photoUrl='';
+  const pf=document.getElementById('checkinPhoto').files[0];
+  if(pf){photoUrl=await uploadImg(pf);if(!photoUrl){alert('照片上传失败');btn.disabled=false;btn.textContent=action==='signIn'?'签 到':'签 退';return}}
   try{
-    const r=await fetch(API+'/app/checkin/'+action,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({workerId,checkMethod:'H5'})});
-    const d=await r.json();
-    if(d.code===200){alert(action==='signIn'?'签到成功!':'签退成功!');refreshCheckin()}else{alert(d.msg||'失败')}
-  }catch(e){alert('网络错误')}
+    const r=await api('/app/checkin/'+action,{method:'POST',body:{checkMethod:'H5',photoUrl}});
+    const d=await r.json();btn.disabled=false;btn.textContent=action==='signIn'?'签 到':'签 退';
+    if(d.code===200){alert(action==='signIn'?'签到成功!':'签退成功!');document.getElementById('checkinPhoto').value='';document.getElementById('photoLabel').textContent='';refreshCheckin()}else{alert(d.msg||'失败')}
+  }catch(e){btn.disabled=false;btn.textContent=action==='signIn'?'签 到':'签 退';alert('网络错误')}
 }
 
 async function loadRecords(){
-  if(!workerId)return;
+  if(!token)return;
   try{
-    const r=await fetch(API+'/app/checkin/list?workerId='+workerId);const d=await r.json();
+    const r=await api('/app/checkin/list');const d=await r.json();
     const list=d.data||[];const el=document.getElementById('recordList');
     if(!list.length){document.getElementById('noRecords').style.display='block';el.innerHTML='';return}
     document.getElementById('noRecords').style.display='none';
@@ -278,9 +301,9 @@ async function loadRecords(){
 }
 
 async function loadProfile(){
-  if(!workerId)return;
+  if(!token)return;
   try{
-    const r=await fetch(API+'/app/auth/me?workerId='+workerId);const d=await r.json();
+    const r=await api('/app/auth/me');const d=await r.json();
     if(d.code===200){
       const w=d.data;document.getElementById('meName').textContent=w.workerName;
       const[a,cls]=auditLabels[w.auditStatus]||[w.auditStatus,''];
@@ -297,7 +320,7 @@ async function loadProfile(){
   }catch(e){}
   // load certs
   try{
-    const r=await fetch(API+'/app/worker/certs?workerId='+workerId);const d=await r.json();
+    const r=await api('/app/worker/certs');const d=await r.json();
     const list=d.data||[];const el=document.getElementById('certList');
     if(!list.length){document.getElementById('noCerts').style.display='block';el.innerHTML='';return}
     document.getElementById('noCerts').style.display='none';
@@ -308,7 +331,7 @@ async function loadProfile(){
     }).join('')
   }catch(e){}
   try{
-    const r=await fetch(API+'/app/worker/face?workerId='+workerId);const d=await r.json();
+    const r=await api('/app/worker/face');const d=await r.json();
     const face=d.data;
     document.getElementById('faceStatus').innerHTML=face&&face.faceImgUrl
       ?'<span style="color:#34c759">✅ 已录入人脸</span>'
@@ -317,26 +340,25 @@ async function loadProfile(){
 }
 
 async function doUploadFace(){
-  if(!workerId)return;
+  if(!token)return;
   const f=document.getElementById('faceImg').files[0];
   if(!f){alert('请选择照片');return}
   const btn=document.getElementById('faceBtn');btn.disabled=true;btn.textContent='上传中...';
   const url=await uploadImg(f);
   if(!url){btn.disabled=false;btn.textContent='提 交';alert('上传失败');return}
   try{
-    const r=await fetch(API+'/app/worker/face',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({workerId,faceImgUrl:url})});
+    const r=await api('/app/worker/face',{method:'POST',body:{faceImgUrl:url}});
     const d=await r.json();btn.disabled=false;btn.textContent='提 交';
     if(d.code===200){alert('人脸上传成功!');showTab('me')}else{alert(d.msg||'失败')}
   }catch(e){btn.disabled=false;btn.textContent='提 交';alert('网络错误')}
 }
 
 async function doAddCert(){
-  if(!workerId)return;
+  if(!token)return;
   const certType=document.getElementById('certType').value;
   const certNo=document.getElementById('certNo').value.trim();
   const issueDate=document.getElementById('issueDate').value;
   const expireDate=document.getElementById('expireDate').value;
-  const imgFile=document.getElementById('certImgFile').files[0];
   if(!certType||!certNo){alert('请填写证件类型和编号');return}
   const btn=document.getElementById('certBtn');btn.disabled=true;btn.textContent='上传中...';
   let certImg='';
@@ -348,14 +370,14 @@ async function doAddCert(){
     certImg=urls.join(',')
   }
   try{
-    const r=await fetch(API+'/app/worker/certs',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({workerId,certType,certNo,issueDate,expireDate,certImg})});
+    const r=await api('/app/worker/certs',{method:'POST',body:{certType,certNo,issueDate,expireDate,certImg}});
     const d=await r.json();btn.disabled=false;btn.textContent='提 交';
     if(d.code===200){alert('上传成功!');showTab('me')}else{alert(d.msg||'失败')}
   }catch(e){btn.disabled=false;btn.textContent='提 交';alert('网络错误')}
 }
 
 async function doUploadIdcard(){
-  if(!workerId)return;
+  if(!token)return;
   const idNo=document.getElementById('idcardNo').value.trim();
   const expireDate=document.getElementById('idcardExpire').value;
   const frontF=document.getElementById('idcardFront').files[0];
@@ -365,16 +387,14 @@ async function doUploadIdcard(){
   const frontUrl=await uploadImg(frontF);
   const backUrl=await uploadImg(backF);
   if(!frontUrl||!backUrl){btn.disabled=false;btn.textContent='提 交';alert('图片上传失败');return}
-  const body1=JSON.stringify({workerId,certType:'id_card',certNo:idNo,certImg:frontUrl,expireDate,remark:'人像面'});
-  const body2=JSON.stringify({workerId,certType:'id_card',certNo:idNo,certImg:backUrl,expireDate,remark:'国徽面'});
   try{
-    await fetch(API+'/app/worker/certs',{method:'POST',headers:{'Content-Type':'application/json'},body:body1});
-    await fetch(API+'/app/worker/certs',{method:'POST',headers:{'Content-Type':'application/json'},body:body2});
+    await api('/app/worker/certs',{method:'POST',body:{certType:'id_card',certNo:idNo,certImg:frontUrl,expireDate,remark:'人像面'}});
+    await api('/app/worker/certs',{method:'POST',body:{certType:'id_card',certNo:idNo,certImg:backUrl,expireDate,remark:'国徽面'}});
     btn.disabled=false;btn.textContent='提 交';alert('身份证上传成功!');showTab('me')
   }catch(e){btn.disabled=false;btn.textContent='提 交';alert('网络错误')}
 }
 
-if(workerId){document.getElementById('tabBar').style.display='flex';showTab('checkin');setInterval(updateClock,1000)}
+if(token){document.getElementById('tabBar').style.display='flex';showTab('checkin')}
 else{showTab('login')}
 </script>
 </body>

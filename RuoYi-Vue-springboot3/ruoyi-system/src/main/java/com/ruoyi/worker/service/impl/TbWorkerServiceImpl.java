@@ -39,7 +39,7 @@ public class TbWorkerServiceImpl implements ITbWorkerService
     @Override public boolean isWorkerActive(Long id) {
         if (id == null) return false;
         TbWorker w = tbWorkerMapper.selectTbWorkerById(id);
-        return w != null && "0".equals(w.getDelFlag());
+        return w != null && "0".equals(w.getDelFlag()) && !"2".equals(w.getStatus());
     }
 
     /**

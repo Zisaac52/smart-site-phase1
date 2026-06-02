@@ -1,55 +1,42 @@
 <template>
   <view class="container">
     <view class="user-bar">
-      <text class="name">{{ workerInfo.workerName || '未登录' }}</text>
+      <text class="name">{{ workerName || '未登录' }}</text>
       <text class="status">{{ auditLabel }}</text>
     </view>
-
     <view class="clock">{{ now }}</view>
     <view class="date">{{ today }}</view>
-
     <view class="today-status">
-      <text>今日签到：{{ hasSignIn ? signInTime : '未签到' }}</text>
-      <text>今日签退：{{ hasSignOut ? signOutTime : '未签退' }}</text>
+      <text>签到：{{ hasSignIn ? signInTime : '未签到' }}</text>
+      <text>签退：{{ hasSignOut ? signOutTime : '未签退' }}</text>
     </view>
-
     <view class="photo-area" @click="takePhoto">
       <image v-if="photoUrl" :src="photoUrl" class="photo" mode="aspectFill" />
       <text v-else class="photo-placeholder">点击拍照</text>
     </view>
-
     <view class="btn-group">
-      <button class="btn signin" @click="doSignIn" :disabled="hasSignIn || loading">{{ loading ? '提交中...' : '签 到' }}</button>
-      <button class="btn signout" @click="doSignOut" :disabled="hasSignOut || loading">{{ loading ? '提交中...' : '签 退' }}</button>
+      <button class="btn signin" @click="doSignIn" :disabled="hasSignIn || loading">签 到</button>
+      <button class="btn signout" @click="doSignOut" :disabled="hasSignOut || loading">签 退</button>
     </view>
-
     <view class="records-link" @click="goRecords">查看打卡记录 →</view>
   </view>
 </template>
 
 <script>
 import config from '@/config.js'
-
 function pad(n) { return n < 10 ? '0' + n : '' + n }
+function authHeader() { return { 'Authorization': 'Bearer ' + (uni.getStorageSync('appToken') || '') } }
 
 export default {
-  data() {
-    return {
-      workerInfo: {}, now: '', today: '', hasSignIn: false, hasSignOut: false,
-      signInTime: '', signOutTime: '', photoUrl: '', loading: false
-    }
-  },
+  data() { return { workerName: '', auditStatus: '', now: '', today: '', hasSignIn: false, hasSignOut: false, signInTime: '', signOutTime: '', photoUrl: '', loading: false, _timer: null } },
   computed: {
     auditLabel() {
-      const s = this.workerInfo.auditStatus
-      if (s === '0') return '待审核'
-      if (s === '1') return '已通过'
-      if (s === '2') return '已驳回'
-      return ''
+      const m = { '0': '待审核', '1': '已通过', '2': '已驳回' }
+      return m[this.auditStatus] || ''
     }
   },
-  onShow() { this.refresh() },
-  mounted() { setInterval(() => { this.updateTime() }, 1000) },
+  onShow() { this.refresh(); this._timer = setInterval(() => { this.updateTime() }, 1000) },
+  onHide() { if (this._timer) { clearInterval(this._timer); this._timer = null } },
   methods: {
     updateTime() {
       const d = new Date()
@@ -58,49 +45,31 @@ export default {
     },
     async refresh() {
       this.updateTime()
-      const id = uni.getStorageSync('workerId')
-      if (!id) { uni.reLaunch({ url: '/pages/worker/login' }); return }
-      // 个人信息
-      const [e1, r1] = await uni.request({ url: config.baseUrl + '/app/auth/me?workerId=' + id })
-      if (r1 && r1.data.code === 200) this.workerInfo = r1.data.data
-      // 今日打卡
-      const [e2, r2] = await uni.request({ url: config.baseUrl + '/app/checkin/today?workerId=' + id })
-      if (r2 && r2.data.code === 200) {
-        const d = r2.data.data
-        this.hasSignIn = d.hasSignIn; this.signInTime = d.signInTime || ''
-        this.hasSignOut = d.hasSignOut; this.signOutTime = d.signOutTime || ''
-      }
+      const token = uni.getStorageSync('appToken')
+      if (!token) { uni.reLaunch({ url: '/pages/worker/login' }); return }
+      try {
+        const [e1, r1] = await uni.request({ url: config.baseUrl + '/app/auth/me', header: authHeader() })
+        if (r1 && r1.data.code === 200) { this.workerName = r1.data.data.workerName; this.auditStatus = r1.data.data.auditStatus }
+      } catch (e) {}
+      try {
+        const [e2, r2] = await uni.request({ url: config.baseUrl + '/app/checkin/today', header: authHeader() })
+        if (r2 && r2.data.code === 200) {
+          const d = r2.data.data; this.hasSignIn = d.hasSignIn; this.signInTime = d.signInTime || ''; this.hasSignOut = d.hasSignOut; this.signOutTime = d.signOutTime || ''
+        }
+      } catch (e) {}
     },
-    takePhoto() {
-      uni.chooseImage({ count: 1, success: (res) => { this.photoUrl = res.tempFilePaths[0] } })
-    },
-    async doSignIn() {
-      await this.doCheck('signIn')
-    },
-    async doSignOut() {
-      await this.doCheck('signOut')
-    },
+    takePhoto() { uni.chooseImage({ count: 1, success: (res) => { this.photoUrl = res.tempFilePaths[0] } }) },
     async doCheck(action) {
       this.loading = true
-      const id = uni.getStorageSync('workerId')
       try {
-        const [err, res] = await uni.request({
-          url: config.baseUrl + '/app/checkin/' + action,
-          method: 'POST',
-          data: { workerId: id, photoUrl: this.photoUrl, checkMethod: 'H5' }
-        })
+        const [err, res] = await uni.request({ url: config.baseUrl + '/app/checkin/' + action, method: 'POST', header: authHeader(), data: { checkMethod: 'H5', photoUrl: this.photoUrl } })
         this.loading = false
-        if (res.data.code === 200) {
-          uni.showToast({ title: action === 'signIn' ? '签到成功' : '签退成功' })
-          this.refresh()
-        } else {
-          uni.showToast({ title: res.data.msg || '失败', icon: 'none' })
-        }
-      } catch (e) {
-        this.loading = false
-        uni.showToast({ title: '网络错误', icon: 'none' })
-      }
+        if (res.data.code === 200) { uni.showToast({ title: action === 'signIn' ? '签到成功' : '签退成功' }); this.refresh() }
+        else { uni.showToast({ title: res.data.msg || '失败', icon: 'none' }) }
+      } catch (e) { this.loading = false; uni.showToast({ title: '网络错误', icon: 'none' }) }
     },
+    doSignIn() { this.doCheck('signIn') },
+    doSignOut() { this.doCheck('signOut') },
     goRecords() { uni.navigateTo({ url: '/pages/worker/records' }) }
   }
 }

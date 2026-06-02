@@ -1,36 +1,38 @@
 package com.ruoyi.web.controller.app;
 
 import java.util.*;
+import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 import com.ruoyi.common.core.domain.AjaxResult;
 import com.ruoyi.worker.domain.TbWorker;
 import com.ruoyi.worker.mapper.TbWorkerMapper;
 import com.ruoyi.worker.mapper.TbWorkerRoleRelMapper;
+import com.ruoyi.worker.service.ITbWorkerService;
 
-/**
- * 手机端认证（第一版：手机号+身份证后6位，不接微信OAuth）
- */
 @RestController
 @RequestMapping("/app/auth")
 public class AppAuthController
 {
     @Autowired private TbWorkerMapper tbWorkerMapper;
     @Autowired private TbWorkerRoleRelMapper tbWorkerRoleRelMapper;
+    @Autowired private ITbWorkerService workerService;
 
-    /** 手机号+身份证后6位登录 */
+    /** 手机号+密码登录 → 返回 HMAC Token */
     @PostMapping("/login")
     public AjaxResult login(@RequestBody Map<String, String> body) {
         String phone = body.get("phone");
         String idCardLast6 = body.get("idCardLast6");
-        if (phone == null || idCardLast6 == null) return AjaxResult.error("手机号和身份证后6位不能为空");
+        if (phone == null || idCardLast6 == null) return AjaxResult.error("手机号和密码不能为空");
         TbWorker q = new TbWorker(); q.setPhone(phone);
         List<TbWorker> list = tbWorkerMapper.selectTbWorkerList(q);
         TbWorker w = list.stream()
-            .filter(t -> t.getIdCard() != null && t.getIdCard().endsWith(idCardLast6) && "0".equals(t.getDelFlag()))
+            .filter(t -> t.getIdCard() != null && t.getIdCard().endsWith(idCardLast6)
+                     && "0".equals(t.getDelFlag()) && !"2".equals(t.getStatus()))
             .findFirst().orElse(null);
-        if (w == null) return AjaxResult.error("手机号或身份证后6位不正确");
+        if (w == null) return AjaxResult.error("手机号或密码不正确");
         Map<String, Object> data = new HashMap<>();
+        data.put("token", AppTokenUtil.create(w.getId()));
         data.put("workerId", w.getId());
         data.put("workerName", w.getWorkerName());
         data.put("auditStatus", w.getAuditStatus());
@@ -39,22 +41,20 @@ public class AppAuthController
         return AjaxResult.success(data);
     }
 
-    /** 获取当前人员信息 */
+    /** 获取当前人员信息（Token 鉴权） */
     @GetMapping("/me")
-    public AjaxResult me(@RequestParam Long workerId) {
-        TbWorker w = tbWorkerMapper.selectTbWorkerById(workerId);
-        if (w == null || !"0".equals(w.getDelFlag())) return AjaxResult.error("人员不存在或已归档");
+    public AjaxResult me(HttpServletRequest req) {
+        Long id = AppTokenUtil.getWorkerId(req);
+        if (id == null) return AjaxResult.error(401, "未登录或登录已过期");
+        if (!workerService.isWorkerActive(id)) return AjaxResult.error("该人员已归档或已禁用，无法操作");
+        TbWorker w = tbWorkerMapper.selectTbWorkerById(id);
         Map<String, Object> data = new HashMap<>();
-        data.put("workerId", w.getId());
-        data.put("workerName", w.getWorkerName());
-        data.put("phone", w.getPhone());
-        data.put("idCard", w.getIdCard());
-        data.put("gender", w.getGender());
-        data.put("unitType", w.getUnitType());
-        data.put("auditStatus", w.getAuditStatus());
-        data.put("faceStatus", w.getFaceStatus());
+        data.put("workerId", w.getId()); data.put("workerName", w.getWorkerName());
+        data.put("phone", w.getPhone()); data.put("idCard", w.getIdCard());
+        data.put("gender", w.getGender()); data.put("unitType", w.getUnitType());
+        data.put("auditStatus", w.getAuditStatus()); data.put("faceStatus", w.getFaceStatus());
         data.put("status", w.getStatus());
-        data.put("roleIds", tbWorkerRoleRelMapper.selectRoleIdsByWorkerId(workerId));
+        data.put("roleIds", tbWorkerRoleRelMapper.selectRoleIdsByWorkerId(id));
         return AjaxResult.success(data);
     }
 }

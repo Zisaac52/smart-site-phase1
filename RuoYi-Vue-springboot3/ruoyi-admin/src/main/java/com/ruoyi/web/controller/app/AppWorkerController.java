@@ -1,6 +1,7 @@
 package com.ruoyi.web.controller.app;
 
 import java.util.*;
+import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 import com.ruoyi.common.core.domain.AjaxResult;
@@ -11,10 +12,8 @@ import com.ruoyi.worker.mapper.TbWorkerCertMapper;
 import com.ruoyi.worker.mapper.TbWorkerFaceMapper;
 import com.ruoyi.worker.mapper.TbWorkerMapper;
 import com.ruoyi.worker.mapper.TbWorkerRoleRelMapper;
+import com.ruoyi.worker.service.ITbWorkerService;
 
-/**
- * 手机端 人员资料/资质
- */
 @RestController
 @RequestMapping("/app/worker")
 public class AppWorkerController
@@ -23,56 +22,65 @@ public class AppWorkerController
     @Autowired private TbWorkerCertMapper certMapper;
     @Autowired private TbWorkerRoleRelMapper roleRelMapper;
     @Autowired private TbWorkerFaceMapper faceMapper;
+    @Autowired private ITbWorkerService workerService;
 
-    /** 我的资料 */
+    private AjaxResult checkActive(HttpServletRequest req) {
+        Long id = AppTokenUtil.getWorkerId(req);
+        if (id == null) return AjaxResult.error(401, "未登录");
+        if (!workerService.isWorkerActive(id)) return AjaxResult.error("该人员已归档或已禁用，无法操作");
+        return null;
+    }
+
     @GetMapping("/profile")
-    public AjaxResult profile(@RequestParam Long workerId) {
-        TbWorker w = workerMapper.selectTbWorkerById(workerId);
-        if (w == null) return AjaxResult.error("人员不存在");
+    public AjaxResult profile(HttpServletRequest req) {
+        AjaxResult r = checkActive(req); if (r != null) return r;
+        Long id = AppTokenUtil.getWorkerId(req);
+        TbWorker w = workerMapper.selectTbWorkerById(id);
         Map<String, Object> d = new HashMap<>();
-        d.put("workerId", w.getId());
-        d.put("workerName", w.getWorkerName());
-        d.put("phone", w.getPhone());
-        d.put("idCard", w.getIdCard());
-        d.put("gender", w.getGender());
-        d.put("unitType", w.getUnitType());
-        d.put("auditStatus", w.getAuditStatus());
-        d.put("faceStatus", w.getFaceStatus());
+        d.put("workerId", w.getId()); d.put("workerName", w.getWorkerName());
+        d.put("phone", w.getPhone()); d.put("idCard", w.getIdCard());
+        d.put("gender", w.getGender()); d.put("unitType", w.getUnitType());
+        d.put("auditStatus", w.getAuditStatus()); d.put("faceStatus", w.getFaceStatus());
         d.put("status", w.getStatus());
-        d.put("roleIds", roleRelMapper.selectRoleIdsByWorkerId(workerId));
+        d.put("roleIds", roleRelMapper.selectRoleIdsByWorkerId(id));
         return AjaxResult.success(d);
     }
 
-    /** 我的资质列表 */
     @GetMapping("/certs")
-    public AjaxResult certs(@RequestParam Long workerId) {
-        TbWorkerCert q = new TbWorkerCert(); q.setWorkerId(workerId);
+    public AjaxResult certs(HttpServletRequest req) {
+        AjaxResult r = checkActive(req); if (r != null) return r;
+        Long id = AppTokenUtil.getWorkerId(req);
+        TbWorkerCert q = new TbWorkerCert(); q.setWorkerId(id);
         return AjaxResult.success(certMapper.selectTbWorkerCertList(q));
     }
 
-    /** 上传证件 */
     @PostMapping("/certs")
-    public AjaxResult addCert(@RequestBody TbWorkerCert cert) {
-        cert.setAuditStatus("0"); // 待审核
+    public AjaxResult addCert(HttpServletRequest req, @RequestBody TbWorkerCert cert) {
+        AjaxResult r = checkActive(req); if (r != null) return r;
+        Long id = AppTokenUtil.getWorkerId(req);
+        cert.setWorkerId(id); // 强制用 token 中的身份
+        cert.setAuditStatus("0");
         certMapper.insertTbWorkerCert(cert);
         return AjaxResult.success(Collections.singletonMap("id", cert.getId()));
     }
 
-    /** 上传人脸照片 */
     @PostMapping("/face")
-    public AjaxResult addFace(@RequestBody TbWorkerFace face) {
+    public AjaxResult addFace(HttpServletRequest req, @RequestBody TbWorkerFace face) {
+        AjaxResult r = checkActive(req); if (r != null) return r;
+        Long id = AppTokenUtil.getWorkerId(req);
+        face.setWorkerId(id);
         face.setCollectTime(new Date());
         faceMapper.insertTbWorkerFace(face);
-        // 回写人员人脸状态
-        TbWorker w = workerMapper.selectTbWorkerById(face.getWorkerId());
+        TbWorker w = workerMapper.selectTbWorkerById(id);
         if (w != null) { w.setFaceStatus("1"); workerMapper.updateTbWorker(w); }
         return AjaxResult.success(Collections.singletonMap("id", face.getId()));
     }
 
-    /** 查看是否已录入人脸 */
     @GetMapping("/face")
-    public AjaxResult getFace(@RequestParam Long workerId) {
-        TbWorkerFace q = new TbWorkerFace(); q.setWorkerId(workerId);
+    public AjaxResult getFace(HttpServletRequest req) {
+        AjaxResult r = checkActive(req); if (r != null) return r;
+        Long id = AppTokenUtil.getWorkerId(req);
+        TbWorkerFace q = new TbWorkerFace(); q.setWorkerId(id);
         List<TbWorkerFace> list = faceMapper.selectTbWorkerFaceList(q);
         return AjaxResult.success(list.isEmpty() ? null : list.get(0));
     }

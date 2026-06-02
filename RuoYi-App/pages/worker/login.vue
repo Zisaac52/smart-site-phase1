@@ -10,46 +10,38 @@
         <input v-model="phone" type="number" placeholder="请输入手机号" maxlength="11" />
       </view>
       <view class="input-group">
-        <text class="label">身份证后6位</text>
-        <input v-model="idCardLast6" type="text" placeholder="请输入身份证后6位" maxlength="6" />
+        <text class="label">密码</text>
+        <input v-model="idCardLast6" type="password" placeholder="身份证号后6位" maxlength="6" />
       </view>
       <button class="btn" @click="doLogin" :disabled="loading">{{ loading ? '登录中...' : '登录' }}</button>
     </view>
-    <view class="tip">首次登录即自动绑定</view>
+    <view class="tip">登录后 7 天内自动保持登录</view>
   </view>
 </template>
 
 <script>
 import config from '@/config.js'
 export default {
-  data() {
-    return { phone: '', idCardLast6: '', loading: false }
-  },
+  data() { return { phone: '', idCardLast6: '', loading: false } },
   methods: {
     async doLogin() {
-      if (!this.phone || !this.idCardLast6) {
-        uni.showToast({ title: '请填写完整', icon: 'none' }); return
-      }
+      if (!this.phone || !this.idCardLast6) { uni.showToast({ title: '请填写完整', icon: 'none' }); return }
       this.loading = true
       try {
         const [err, res] = await uni.request({
-          url: config.baseUrl + '/app/auth/login',
-          method: 'POST',
+          url: config.baseUrl + '/app/auth/login', method: 'POST',
           data: { phone: this.phone, idCardLast6: this.idCardLast6 }
         })
         this.loading = false
         if (res.data.code === 200) {
-          uni.setStorageSync('workerId', res.data.data.workerId)
-          uni.setStorageSync('workerInfo', res.data.data)
+          uni.setStorageSync('appToken', res.data.data.token)
+          uni.setStorageSync('workerName', res.data.data.workerName)
           uni.showToast({ title: '登录成功' })
           setTimeout(() => { uni.reLaunch({ url: '/pages/worker/checkin' }) }, 500)
         } else {
           uni.showToast({ title: res.data.msg || '登录失败', icon: 'none' })
         }
-      } catch (e) {
-        this.loading = false
-        uni.showToast({ title: '网络错误', icon: 'none' })
-      }
+      } catch (e) { this.loading = false; uni.showToast({ title: '网络错误', icon: 'none' }) }
     }
   }
 }
